@@ -3,21 +3,22 @@ import pandas as pd
 import numpy as np
 
 # 페이지 설정
-st.set_page_config(page_title="UHNW 통합 가문 자산 시뮬레이터", layout="wide")
+st.set_page_config(page_title="UHNW 통합 가문 자산 시뮬레이터 v7", layout="wide")
 
 def fmt(number):
     return f"{int(number):,}"
 
-st.title("🏛️ 통합 가문 자산 시뮬레이터 (안정화 버전)")
-st.info("비용 구조 및 분배 로직이 적용된 최종 안정화 버전입니다.")
+st.title("🏛️ 통합 가문 자산 시뮬레이터 v7 (할인율 및 어음 장부 연동)")
+st.info("할인율(Valuation Discount)에 따른 어음 장부가액과 법적 이자 지급액을 정밀하게 시뮬레이션합니다.")
 
 # ---------------------------------------------------------
-# 메모리 초기화 (과거 에러 캐시를 무시하기 위해 키 이름을 app_data_v6로 변경)
+# 메모리 초기화 (v7 전용 키 사용으로 충돌 방지)
 # ---------------------------------------------------------
-if 'app_data_v6' not in st.session_state:
-    st.session_state.app_data_v6 = [
+if 'app_data_v7' not in st.session_state:
+    st.session_state.app_data_v7 = [
         {
-            "name": "IDGT 1", "type": "IDGT", "amount": 20000000, "ppli": True, "seed": True, 
+            "name": "IDGT 1", "type": "IDGT", "amount": 20000000, "discount_rate": 0.30,
+            "ppli": True, "seed": True, 
             "costs": {"ppli": 0.010, "admin": 5000, "dist_fee": 0, "ria": 0.005},
             "dist": {"active": False, "type": "Fixed $", "value": 0.0}
         }
@@ -31,17 +32,23 @@ with st.sidebar:
     years = st.slider("기간 (년)", 5, 50, 30)
     expected_roi = st.number_input("평균 예상 수익률 (ROI)", value=0.08, step=0.01, format="%.2f")
     afr_rate = st.number_input("연방 이자율 (AFR)", value=0.048, step=0.001, format="%.3f")
+    st.caption("※ AFR은 할인된 어음 장부가액에 적용됩니다.")
 
 # ---------------------------------------------------------
 # 메인 화면: 엔티티(신탁) 관리 UI
 # ---------------------------------------------------------
-for i, entity in enumerate(st.session_state.app_data_v6):
+for i, entity in enumerate(st.session_state.app_data_v7):
     with st.expander(f"🔹 {entity['name']} 상세 설정", expanded=True):
         c1, c2 = st.columns(2)
         with c1:
             entity['name'] = st.text_input(f"신탁 명칭", value=entity['name'], key=f"n_{i}")
-            entity['amount'] = st.number_input(f"초기 자산 ($)", value=int(entity['amount']), step=100000, key=f"a_{i}")
-            st.caption(f"현재 입력값: **${fmt(entity['amount'])}**")
+            entity['amount'] = st.number_input(f"초기 자산 가치 (FMV, $)", value=int(entity['amount']), step=100000, key=f"a_{i}")
+            
+            # --- 할인율 및 장부가액 로직 추가 ---
+            entity['discount_rate'] = st.slider(f"증여 할인율 (Valuation Discount, %)", 0, 50, int(entity.get('discount_rate', 0.3)*100), key=f"dr_{i}") / 100
+            book_value = entity['amount'] * (1 - entity['discount_rate'])
+            st.success(f"📉 **어음 장부가액 (Book Value): ${fmt(book_value)}**")
+            # ----------------------------------
             
             entity['type'] = st.selectbox(f"종류", ["IDGT", "RLT", "ILIT", "Personal"], index=["IDGT", "RLT", "ILIT", "Personal"].index(entity['type']), key=f"t_{i}")
             entity['ppli'] = st.toggle("PPLI 래핑 (소득세 면제)", value=entity['ppli'], key=f"p_{i}")
@@ -63,8 +70,8 @@ for i, entity in enumerate(st.session_state.app_data_v6):
                 entity['dist']['value'] = st.number_input("분배 값 (% 또는 $)", value=float(entity['dist']['value']), step=0.01, key=f"dv_{i}")
 
 if st.button("➕ 자산 엔티티 추가"):
-    st.session_state.app_data_v6.append({
-        "name": f"New Entity", "type": "IDGT", "amount": 1000000, "ppli": False, "seed": False,
+    st.session_state.app_data_v7.append({
+        "name": f"New Entity", "type": "IDGT", "amount": 1000000, "discount_rate": 0.30, "ppli": False, "seed": False,
         "costs": {"ppli": 0.0, "admin": 0, "dist_fee": 0, "ria": 0.0},
         "dist": {"active": False, "type": "Fixed $", "value": 0.0}
     })
@@ -74,19 +81,19 @@ if st.button("➕ 자산 엔티티 추가"):
 # 시뮬레이션 엔진 및 결과 출력
 # ---------------------------------------------------------
 st.markdown("---")
-if st.button("🚀 시뮬레이션 실행", type="primary"):
+if st.button("🚀 v7 시뮬레이션 실행 (할인율 적용)", type="primary"):
     history = []
     grantor_cash = 0
-    current_amounts = [e['amount'] for e in st.session_state.app_data_v6]
+    current_amounts = [e['amount'] for e in st.session_state.app_data_v7]
     
     for year in range(1, years + 1):
         year_data = {"Year": year}
         total_wealth = 0
         
-        for i, entity in enumerate(st.session_state.app_data_v6):
+        for i, entity in enumerate(st.session_state.app_data_v7):
             asset = current_amounts[i]
             
-            # 1. 성장
+            # 1. 성장 (실제 자산 가치 기준 성장)
             growth = asset * expected_roi
             
             # 2. 비용 차감
@@ -100,8 +107,11 @@ if st.button("🚀 시뮬레이션 실행", type="primary"):
             # 4. 세금 및 이자 (Grantor Burn)
             tax = 0 if entity['ppli'] else (growth * 0.35)
             
+            # [수정] 이자 계산 시 할인된 장부가액(Book Value)의 90%를 기준으로 계산
             if entity['type'] == "IDGT" and entity.get('seed', False):
-                interest = (asset * 0.9) * afr_rate
+                book_value = entity['amount'] * (1 - entity['discount_rate'])
+                note_principal = book_value * 0.9  # Seed 10% 제외
+                interest = note_principal * afr_rate
                 asset -= interest
                 grantor_cash += interest
             
@@ -119,16 +129,14 @@ if st.button("🚀 시뮬레이션 실행", type="primary"):
         
     df = pd.DataFrame(history)
     
-    # 핵심 지표
+    # 결과 요약
     c1, c2, c3 = st.columns(3)
     c1.metric("최종 가문 총 자산", f"${fmt(df['Total Wealth'].iloc[-1])}")
     c2.metric("위탁자 잔여 현금", f"${fmt(df['Grantor Cash'].iloc[-1])}")
     c3.metric("신탁 합계 자산", f"${fmt(df['Total Wealth'].iloc[-1] - df['Grantor Cash'].iloc[-1])}")
 
-    # 차트
     st.subheader("📈 자산 성장 그래프")
-    st.area_chart(df.set_index("Year")[[e['name'] for e in st.session_state.app_data_v6] + ["Grantor Cash"]])
+    st.area_chart(df.set_index("Year")[[e['name'] for e in st.session_state.app_data_v7] + ["Grantor Cash"]])
     
-    # 데이터 테이블
     with st.expander("연도별 상세 리포트 확인"):
         st.dataframe(df.style.format(lambda x: f"{x:,.0f}"))
