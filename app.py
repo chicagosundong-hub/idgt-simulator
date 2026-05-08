@@ -156,3 +156,30 @@ if st.button("🚀 v10 시뮬레이션 실행 및 누적 표 생성", type="prim
         year_data["누적분배액"] = cum_dist
         
         history.append(year_data)
+        
+    df = pd.DataFrame(history)
+    
+    # 1. 요약 지표 (Metric)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("최종 가문 총 자산", f"${fmt(df['가문총자산'].iloc[-1])}")
+    m2.metric("최종 누적 분배액", f"${fmt(df['누적분배액'].iloc[-1])}")
+    m3.metric("최종 누적 이자수익", f"${fmt(df['누적법적이자'].iloc[-1])}")
+
+    # 2. 누적 상세표 (표시 형식 강제 적용)
+    st.subheader("📊 시뮬레이션 누적 상세 리포트")
+    st.dataframe(
+        df,
+        column_config={
+            "신탁자산(기말)": st.column_config.NumberColumn(format="$%d"),
+            "위탁자현금": st.column_config.NumberColumn(format="$%d"),
+            "가문총자산": st.column_config.NumberColumn(format="$%d"),
+            "누적법적이자": st.column_config.NumberColumn(format="$%d"),
+            "누적분배액": st.column_config.NumberColumn(format="$%d"),
+        },
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # 3. 그래프
+    st.subheader("📈 자산 성장 추이")
+    st.area_chart(df.set_index("연도")[["신탁자산(기말)", "위탁자현금"]])
