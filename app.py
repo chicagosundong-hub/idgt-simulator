@@ -2,42 +2,35 @@ import streamlit as st
 import pandas as pd
 
 # 페이지 설정
-st.set_page_config(page_title="UHNW 통합 가문 자산 시뮬레이터 v15", layout="wide")
+st.set_page_config(page_title="UHNW 가문 통합 자산 시뮬레이터 v16", layout="wide")
 
 # ---------------------------------------------------------
-# 유틸리티 함수: 숫자 포맷팅 및 입력 처리
+# 유틸리티 함수
 # ---------------------------------------------------------
 def fmt(number):
-    """숫자를 천 단위 콤마 문자열로 변환 (정수 기준)"""
-    try:
-        return f"{int(float(number)):,}"
-    except:
-        return "0"
+    try: return f"{int(float(number)):,}"
+    except: return "0"
 
 def parse_num(val):
-    """콤마가 포함된 문자열을 정수로 안전하게 변환"""
     if isinstance(val, str):
-        # 콤마 및 기타 기호 제거
         clean_val = val.replace(",", "").replace("$", "").strip()
         return int(float(clean_val)) if clean_val else 0
     return int(val)
 
-st.title("🏛️ 통합 가문 자산 시뮬레이터 v15")
-st.info("포맷팅 업데이트: 모든 비용 및 분배 입력창에 천 단위 콤마(,)가 적용되었습니다.")
+st.title("🏛️ 가문 통합 자산 시뮬레이터 v16")
+st.info("복원 완료: 'Seed/Note 활성화' 및 '엔티티 추가' 기능이 현재의 비용 체계와 통합되었습니다.")
 
 # ---------------------------------------------------------
-# 세션 상태 초기화 (v15)
+# 세션 상태 초기화 (멀티 엔티티 관리)
 # ---------------------------------------------------------
-if 'app_data_v15' not in st.session_state:
-    st.session_state.app_data_v15 = [
+if 'app_data_v16' not in st.session_state:
+    st.session_state.app_data_v16 = [
         {
             "name": "IDGT 1", "type": "IDGT", "amount": 20000000, "discount_rate": 0.30,
-            "seed_pct": 0.10, "ppli": True, "seed": True, 
+            "seed_active": True, "seed_pct": 0.10, "ppli": True,
             "costs": {
-                "ppli": {"type": "$", "val": 200000},
-                "ria": {"type": "$", "val": 200000},
-                "admin": {"type": "$", "val": 50000},
-                "dist_fee": {"type": "$", "val": 2000000},
+                "ppli": {"type": "$", "val": 200000}, "ria": {"type": "$", "val": 200000},
+                "admin": {"type": "$", "val": 50000}, "dist_fee": {"type": "$", "val": 2000000},
                 "others": {"type": "$", "val": 200000}
             },
             "dist": {"active": True, "type": "AUM %", "val": 1.0}
@@ -45,40 +38,57 @@ if 'app_data_v15' not in st.session_state:
     ]
 
 # ---------------------------------------------------------
-# 사이드바: 시뮬레이션 환경 설정
+# 상단 기능 버튼: 엔티티 추가
+# ---------------------------------------------------------
+if st.button("➕ 새 자산 엔티티(신탁) 추가"):
+    new_id = len(st.session_state.app_data_v16) + 1
+    st.session_state.app_data_v16.append({
+        "name": f"신규 신탁 {new_id}", "type": "IDGT", "amount": 10000000, "discount_rate": 0.30,
+        "seed_active": False, "seed_pct": 0.10, "ppli": True,
+        "costs": {
+            "ppli": {"type": "%", "val": 0.4}, "ria": {"type": "%", "val": 0.5},
+            "admin": {"type": "$", "val": 50000}, "dist_fee": {"type": "$", "val": 0},
+            "others": {"type": "$", "val": 0}
+        },
+        "dist": {"active": False, "type": "AUM %", "val": 1.0}
+    })
+
+# ---------------------------------------------------------
+# 사이드바: 글로벌 환경 설정
 # ---------------------------------------------------------
 with st.sidebar:
     st.header("⚙️ 시뮬레이션 환경")
     years = st.slider("시뮬레이션 기간 (년)", 5, 50, 30)
-    roi_input = st.number_input("평균 예상 수익률 (ROI, %)", value=10.0, step=0.5, format="%.1f")
-    expected_roi = roi_input / 100
-    
-    afr_input = st.number_input("연방 이자율 (AFR, %)", value=4.8, step=0.1, format="%.1f")
-    afr_rate = afr_input / 100
+    expected_roi = st.number_input("평균 예상 수익률 (ROI, %)", value=10.0, step=0.5) / 100
+    afr_rate = st.number_input("연방 이자율 (AFR, %)", value=4.8, step=0.1) / 100
 
 # ---------------------------------------------------------
-# 메인 화면: 엔티티 상세 설정
+# 메인 UI: 각 엔티티별 개별 설정
 # ---------------------------------------------------------
-for i, entity in enumerate(st.session_state.app_data_v15):
+for i, entity in enumerate(st.session_state.app_data_v16):
     with st.expander(f"🔹 {entity['name']} 설정 및 비용 분석", expanded=True):
+        col_del_1, col_del_2 = st.columns([9, 1])
+        with col_del_2:
+            if st.button("🗑️ 삭제", key=f"del_{i}"):
+                st.session_state.app_data_v16.pop(i)
+                st.rerun()
+
         c1, c2 = st.columns(2)
         with c1:
             entity['name'] = st.text_input("신탁 명칭", value=entity['name'], key=f"n_{i}")
+            amt_in = st.text_input("초기 자산 가치 (FMV, $)", value=fmt(entity['amount']), key=f"a_{i}")
+            entity['amount'] = parse_num(amt_in)
+            entity['discount_rate'] = st.slider("증여 할인율 (%)", 0, 50, int(entity['discount_rate']*100), key=f"dr_{i}") / 100
             
-            # 초기 자산 (콤마 적용)
-            amt_str = st.text_input("초기 자산 가치 (FMV, $)", value=fmt(entity['amount']), key=f"a_str_{i}")
-            entity['amount'] = parse_num(amt_str)
-            
-            entity['discount_rate'] = st.slider("증여 할인율 (%)", 0, 50, int(entity.get('discount_rate', 0.3)*100), key=f"dr_{i}") / 100
-            
-            if entity['type'] == "IDGT" and entity.get('seed', True):
-                book_val = entity['amount'] * (1 - entity['discount_rate'])
-                n_principal = book_val * (1 - entity.get('seed_pct', 0.1))
+            # [기능 복원] Seed/Note 활성화 버튼
+            entity['seed_active'] = st.toggle("Seed/Note 구조 활성화", value=entity.get('seed_active', False), key=f"sa_{i}")
+            if entity['seed_active']:
+                entity['seed_pct'] = st.number_input("씨드머니 비율 (예: 0.1)", value=float(entity.get('seed_pct', 0.1)), key=f"sp_{i}")
+                b_val = entity['amount'] * (1 - entity['discount_rate'])
+                n_p = b_val * (1 - entity['seed_pct'])
                 st.markdown(f"""
-                <div style="background-color:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #dee2e6;">
-                    <p style="margin:0; font-weight:bold; color:#2c3e50;">📝 IDGT 어음매매 상세</p>
-                    <p style="margin:5px 0;">📜 어음매매금액(고정원금): <b>${fmt(n_principal)}</b></p>
-                    <p style="margin:5px 0; color:#e74c3c;">📅 연간 법적 이자액: ${fmt(n_principal * afr_rate)}</p>
+                <div style="background-color:#f8f9fa; padding:10px; border-radius:5px; border:1px solid #ddd;">
+                    <p style="margin:0; font-size:14px;">📜 어음매매금액: <b>${fmt(n_p)}</b> / 📅 연간 법적이자: <span style="color:red;">${fmt(n_p * afr_rate)}</span></p>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -86,112 +96,111 @@ for i, entity in enumerate(st.session_state.app_data_v15):
             entity['ppli'] = st.toggle("PPLI 래핑 (소득세 면제)", value=entity['ppli'], key=f"p_{i}")
 
         with c2:
-            st.markdown("**💸 비용 및 분배 설정**")
-            cost_labels = {
-                "ppli": "PPLI 요율", "ria": "RIA 비용", "admin": "행정수탁료", 
-                "dist_fee": "분배수탁료", "others": "기타"
-            }
-            
-            for key, label in cost_labels.items():
-                col_type, col_val = st.columns([1, 2])
-                with col_type:
-                    method = st.radio(f"{label} 방식", ["%", "$"], 
-                                      index=0 if entity['costs'][key]['type'] == "%" else 1, 
-                                      key=f"ct_{key}_{i}", horizontal=True)
-                    entity['costs'][key]['type'] = method
-                with col_val:
-                    if method == "%":
-                        # 요율(%) 입력 시에는 소수점 3자리까지 허용
-                        entity['costs'][key]['val'] = st.number_input(f"{label} (%)", 
-                                                                     value=float(entity['costs'][key]['val']), 
-                                                                     format="%.3f", key=f"cv_{key}_{i}")
+            st.markdown("**💸 비용 및 분배 설정 (콤마 적용)**")
+            cost_items = {"ppli": "PPLI 요율", "ria": "RIA 비용", "admin": "행정수탁료", "dist_fee": "분배수탁료", "others": "기타"}
+            for k, label in cost_items.items():
+                col_m, col_v = st.columns([1, 2])
+                with col_m:
+                    m = st.radio(f"{label} 방식", ["%", "$"], index=0 if entity['costs'][k]['type']=="%" else 1, key=f"m_{k}_{i}", horizontal=True)
+                    entity['costs'][k]['type'] = m
+                with col_v:
+                    if m == "%":
+                        entity['costs'][k]['val'] = st.number_input(f"{label} (%)", value=float(entity['costs'][k]['val']), format="%.3f", key=f"v_{k}_{i}")
                     else:
-                        # 금액($) 입력 시 콤마 포맷 적용
-                        val_input = st.text_input(f"{label} ($)", value=fmt(entity['costs'][key]['val']), key=f"cvs_{key}_{i}")
-                        entity['costs'][key]['val'] = parse_num(val_input)
+                        v_str = st.text_input(f"{label} ($)", value=fmt(entity['costs'][k]['val']), key=f"vs_{k}_{i}")
+                        entity['costs'][k]['val'] = parse_num(v_str)
 
             st.markdown("---")
             entity['dist']['active'] = st.toggle("연간 분배 실행", value=entity['dist']['active'], key=f"da_{i}")
             if entity['dist']['active']:
-                d_method = st.radio("분배 방식", ["AUM %", "Fixed $"], 
-                                    index=0 if entity['dist']['type'] == "AUM %" else 1, 
-                                    key=f"dt_{i}", horizontal=True)
-                entity['dist']['type'] = d_method
-                if d_method == "AUM %":
-                    entity['dist']['val'] = st.number_input("분배 비율 (%)", value=float(entity['dist']['val']), key=f"dv_{i}")
-                else:
-                    # 분배 금액($)에도 콤마 적용
-                    dv_input = st.text_input("분배 금액 ($)", value=fmt(entity['dist']['val']), key=f"dvs_{i}")
-                    entity['dist']['val'] = parse_num(dv_input)
+                dm, dv = st.columns([1, 2])
+                with dm:
+                    d_m = st.radio("분배 방식", ["AUM %", "Fixed $"], index=0 if entity['dist']['type']=="AUM %" else 1, key=f"dm_{i}", horizontal=True)
+                    entity['dist']['type'] = d_m
+                with dv:
+                    if d_m == "AUM %":
+                        entity['dist']['val'] = st.number_input("분배 비율 (%)", value=float(entity['dist']['val']), key=f"dv_{i}")
+                    else:
+                        dv_str = st.text_input("분배 금액 ($)", value=fmt(entity['dist']['val']), key=f"dvs_{i}")
+                        entity['dist']['val'] = parse_num(dv_str)
 
 # ---------------------------------------------------------
-# 시뮬레이션 엔진 및 리포트 출력
+# 시뮬레이션 엔진 및 상세 리포트 (복합 연동)
 # ---------------------------------------------------------
-if st.button("🚀 v15 시뮬레이션 실행 (콤마 포맷 전체 적용)", type="primary"):
-    history = []
-    cum_interest, cum_dist, cum_all_expenses = 0, 0, 0
-    current_assets = [e['amount'] for e in st.session_state.app_data_v15]
+if st.button("🚀 v16 통합 시뮬레이션 실행 (기능 복원 완료)", type="primary"):
+    all_reports = []
+    current_assets = [e['amount'] for e in st.session_state.app_data_v16]
     
-    for year in range(1, years + 1):
-        total_net_trust, total_note_debt = 0, 0
-        y_interest, y_dist, y_expenses_sum = 0, 0, 0
+    # 누적 추적용 변수들
+    cum_data = {i: {"intr": 0, "dist": 0, "exp": 0} for i in range(len(st.session_state.app_data_v16))}
+    total_cum = {"intr": 0, "dist": 0, "exp": 0}
+
+    for y in range(1, years + 1):
+        year_row = {"연도": f"{y}년"}
+        y_total_net, y_total_note, y_total_growth = 0, 0, 0
+        y_total_intr, y_total_dist, y_total_exp = 0, 0, 0
         
-        for i, entity in enumerate(st.session_state.app_data_v15):
+        for i, entity in enumerate(st.session_state.app_data_v16):
             asset = current_assets[i]
             growth = asset * expected_roi
             
-            # 1. 5대 비용 계산
-            fees = 0
-            for k in entity['costs']:
-                c_info = entity['costs'][k]
-                fees += (asset * (c_info['val'] / 100)) if c_info['type'] == "%" else c_info['val']
+            # 비용 계산
+            fees = sum([(asset * (c['val']/100) if c['type']=="%" else c['val']) for c in entity['costs'].values()])
             
-            # 2. 분배금 및 법적 이자
+            # 분배금
             d_amt = 0
             if entity['dist']['active']:
-                d_amt = (asset * (entity['dist']['val'] / 100)) if entity['dist']['type'] == "AUM %" else entity['dist']['val']
+                d_amt = (asset * (entity['dist']['val']/100)) if entity['dist']['type']=="AUM %" else entity['dist']['val']
             
+            # Seed/Note 이자 (활성화된 경우만)
             intr, note_p = 0, 0
-            if entity['type'] == "IDGT":
+            if entity.get('seed_active', False):
                 b_val = entity['amount'] * (1 - entity['discount_rate'])
-                note_p = b_val * (1 - entity.get('seed_pct', 0.1))
-                intr = note_p * afr_rate
+                note_p = b_val * (1 - entity['seed_pct'])
+                intr = n_p * afr_rate
             
-            # 3. 소득세 (PPLI 미적용 시)
             tax = 0 if entity['ppli'] else (growth * 0.35)
             
-            # 4. 자산 정산
+            # 자산 업데이트
             asset_next = asset + growth - fees - d_amt - intr - tax
             current_assets[i] = asset_next
             
-            total_net_trust += asset_next
-            total_note_debt += note_p
-            y_interest += intr
-            y_dist += d_amt
-            y_expenses_sum += (fees + d_amt + intr + tax)
+            # 누적 합산
+            cum_data[i]["intr"] += intr
+            cum_data[i]["dist"] += d_amt
+            cum_data[i]["exp"] += (fees + d_amt + intr + tax)
             
-        cum_interest += y_interest
-        cum_dist += y_dist
-        cum_all_expenses += y_expenses_sum
+            # 개별 엔티티 데이터 기록 (사용자 요청 리포트 형식)
+            prefix = f"[{entity['name']}] "
+            year_row[f"{prefix}순자산"] = asset_next
+            year_row[f"{prefix}법적이자"] = intr
+            year_row[f"{prefix}분배액"] = d_amt
+            
+            # 전체 가계 합산
+            y_total_net += asset_next
+            y_total_note += note_p
+            y_total_intr += intr
+            y_total_dist += d_amt
+            y_total_exp += (fees + d_amt + intr + tax)
+
+        total_cum["intr"] += y_total_intr
+        total_cum["dist"] += y_total_dist
+        total_cum["exp"] += y_total_exp
+
+        # 전체(Overall) 데이터 기록
+        year_row["[전체] 순신탁자산"] = y_total_net
+        year_row["[전체] 위탁자산(어음)"] = y_total_note
+        year_row["[전체] 총신탁자산"] = y_total_net + total_cum["exp"]
+        year_row["[전체] 누적법적이자"] = total_cum["intr"]
+        year_row["[전체] 누적분배액"] = total_cum["dist"]
         
-        history.append({
-            "연도": f"{year}년",
-            "순신탁자산": total_net_trust,
-            "위탁자산(어음매매액)": total_note_debt,
-            "총신탁자산": total_net_trust + cum_all_expenses,
-            "당해 법적이자": y_interest,
-            "누적 법적이자": cum_interest,
-            "당해 분배액": y_dist,
-            "누적 분배액": cum_dist
-        })
-        
-    df = pd.DataFrame(history)
-    st.subheader("📊 연간 및 누적 상세 리포트 (v15)")
-    
-    num_cols = [c for c in df.columns if c != "연도"]
-    st.dataframe(
-        df,
-        column_config={c: st.column_config.NumberColumn(format="$%,d") for c in num_cols},
-        use_container_width=True,
-        hide_index=True
-    )
+        all_reports.append(year_row)
+
+    df = pd.DataFrame(all_reports)
+    # 컬럼 순서 재배치 (전체 데이터 우선)
+    cols = ["연도"] + [c for c in df.columns if "[전체]" in c] + [c for c in df.columns if "[" in c and "[전체]" not in c]
+    df = df[cols]
+
+    st.subheader("📊 연간 및 상세 누적 리포트 (통합 버전)")
+    st.dataframe(df, column_config={c: st.column_config.NumberColumn(format="$%,d") for c in df.columns if c != "연도"},
+                 use_container_width=True, hide_index=True)
