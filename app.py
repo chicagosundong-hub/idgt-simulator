@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # 페이지 설정
-st.set_page_config(page_title="UHNW 가문 통합 자산 시뮬레이터 v16", layout="wide")
+st.set_page_config(page_title="UHNW 가문 통합 자산 시뮬레이터 v17", layout="wide")
 
 # ---------------------------------------------------------
 # 유틸리티 함수
@@ -17,14 +17,14 @@ def parse_num(val):
         return int(float(clean_val)) if clean_val else 0
     return int(val)
 
-st.title("🏛️ 가문 통합 자산 시뮬레이터 v16")
-st.info("복원 완료: 'Seed/Note 활성화' 및 '엔티티 추가' 기능이 현재의 비용 체계와 통합되었습니다.")
+st.title("🏛️ 가문 통합 자산 시뮬레이터 v17")
+st.info("오류 수정: 각 신탁별(IDGT 1, 2 등) 법적 이자가 다른 신탁과 꼬이지 않고 개별적으로 정확히 계산되어 리포트에 반영됩니다.")
 
 # ---------------------------------------------------------
 # 세션 상태 초기화 (멀티 엔티티 관리)
 # ---------------------------------------------------------
-if 'app_data_v16' not in st.session_state:
-    st.session_state.app_data_v16 = [
+if 'app_data_v17' not in st.session_state:
+    st.session_state.app_data_v17 = [
         {
             "name": "IDGT 1", "type": "IDGT", "amount": 20000000, "discount_rate": 0.30,
             "seed_active": True, "seed_pct": 0.10, "ppli": True,
@@ -41,8 +41,8 @@ if 'app_data_v16' not in st.session_state:
 # 상단 기능 버튼: 엔티티 추가
 # ---------------------------------------------------------
 if st.button("➕ 새 자산 엔티티(신탁) 추가"):
-    new_id = len(st.session_state.app_data_v16) + 1
-    st.session_state.app_data_v16.append({
+    new_id = len(st.session_state.app_data_v17) + 1
+    st.session_state.app_data_v17.append({
         "name": f"신규 신탁 {new_id}", "type": "IDGT", "amount": 10000000, "discount_rate": 0.30,
         "seed_active": False, "seed_pct": 0.10, "ppli": True,
         "costs": {
@@ -65,12 +65,12 @@ with st.sidebar:
 # ---------------------------------------------------------
 # 메인 UI: 각 엔티티별 개별 설정
 # ---------------------------------------------------------
-for i, entity in enumerate(st.session_state.app_data_v16):
+for i, entity in enumerate(st.session_state.app_data_v17):
     with st.expander(f"🔹 {entity['name']} 설정 및 비용 분석", expanded=True):
         col_del_1, col_del_2 = st.columns([9, 1])
         with col_del_2:
             if st.button("🗑️ 삭제", key=f"del_{i}"):
-                st.session_state.app_data_v16.pop(i)
+                st.session_state.app_data_v17.pop(i)
                 st.rerun()
 
         c1, c2 = st.columns(2)
@@ -80,7 +80,7 @@ for i, entity in enumerate(st.session_state.app_data_v16):
             entity['amount'] = parse_num(amt_in)
             entity['discount_rate'] = st.slider("증여 할인율 (%)", 0, 50, int(entity['discount_rate']*100), key=f"dr_{i}") / 100
             
-            # [기능 복원] Seed/Note 활성화 버튼
+            # Seed/Note 활성화 버튼
             entity['seed_active'] = st.toggle("Seed/Note 구조 활성화", value=entity.get('seed_active', False), key=f"sa_{i}")
             if entity['seed_active']:
                 entity['seed_pct'] = st.number_input("씨드머니 비율 (예: 0.1)", value=float(entity.get('seed_pct', 0.1)), key=f"sp_{i}")
@@ -125,14 +125,14 @@ for i, entity in enumerate(st.session_state.app_data_v16):
                         entity['dist']['val'] = parse_num(dv_str)
 
 # ---------------------------------------------------------
-# 시뮬레이션 엔진 및 상세 리포트 (복합 연동)
+# 시뮬레이션 엔진 및 상세 리포트 (버그 수정 완료)
 # ---------------------------------------------------------
-if st.button("🚀 v16 통합 시뮬레이션 실행 (기능 복원 완료)", type="primary"):
+if st.button("🚀 v17 통합 시뮬레이션 실행", type="primary"):
     all_reports = []
-    current_assets = [e['amount'] for e in st.session_state.app_data_v16]
+    current_assets = [e['amount'] for e in st.session_state.app_data_v17]
     
     # 누적 추적용 변수들
-    cum_data = {i: {"intr": 0, "dist": 0, "exp": 0} for i in range(len(st.session_state.app_data_v16))}
+    cum_data = {i: {"intr": 0, "dist": 0, "exp": 0} for i in range(len(st.session_state.app_data_v17))}
     total_cum = {"intr": 0, "dist": 0, "exp": 0}
 
     for y in range(1, years + 1):
@@ -140,7 +140,7 @@ if st.button("🚀 v16 통합 시뮬레이션 실행 (기능 복원 완료)", ty
         y_total_net, y_total_note, y_total_growth = 0, 0, 0
         y_total_intr, y_total_dist, y_total_exp = 0, 0, 0
         
-        for i, entity in enumerate(st.session_state.app_data_v16):
+        for i, entity in enumerate(st.session_state.app_data_v17):
             asset = current_assets[i]
             growth = asset * expected_roi
             
@@ -156,8 +156,9 @@ if st.button("🚀 v16 통합 시뮬레이션 실행 (기능 복원 완료)", ty
             intr, note_p = 0, 0
             if entity.get('seed_active', False):
                 b_val = entity['amount'] * (1 - entity['discount_rate'])
+                # 수정된 부분: 변수명 꼬임 현상 방지. 정확히 해당 엔티티의 note_p에 AFR을 곱함
                 note_p = b_val * (1 - entity['seed_pct'])
-                intr = n_p * afr_rate
+                intr = note_p * afr_rate  
             
             tax = 0 if entity['ppli'] else (growth * 0.35)
             
@@ -170,7 +171,7 @@ if st.button("🚀 v16 통합 시뮬레이션 실행 (기능 복원 완료)", ty
             cum_data[i]["dist"] += d_amt
             cum_data[i]["exp"] += (fees + d_amt + intr + tax)
             
-            # 개별 엔티티 데이터 기록 (사용자 요청 리포트 형식)
+            # 개별 엔티티 데이터 기록
             prefix = f"[{entity['name']}] "
             year_row[f"{prefix}순자산"] = asset_next
             year_row[f"{prefix}법적이자"] = intr
@@ -197,7 +198,7 @@ if st.button("🚀 v16 통합 시뮬레이션 실행 (기능 복원 완료)", ty
         all_reports.append(year_row)
 
     df = pd.DataFrame(all_reports)
-    # 컬럼 순서 재배치 (전체 데이터 우선)
+    # 컬럼 순서 재배치 (전체 데이터 우선, 그 다음 각 개별 신탁 데이터)
     cols = ["연도"] + [c for c in df.columns if "[전체]" in c] + [c for c in df.columns if "[" in c and "[전체]" not in c]
     df = df[cols]
 
